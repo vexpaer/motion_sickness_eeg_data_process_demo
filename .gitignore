@@ -1,0 +1,17 @@
+# Controlled human EEG data and all signal-bearing derivatives must stay out of Git.
+EEG_data/
+outputs/
+**/*.bdf
+**/*.edf
+**/*.fif
+**/*.npy
+**/*.npz
+**/*.pkl
+**/*.pickle
+**/__pycache__/
+*.pyc
+*.log
+*.aux
+*.fls
+*.fdb_latexmk
+*.xdv

@@ -1,0 +1,8 @@
+mne
+edfio
+numpy
+pandas
+scipy
+scikit-learn
+matplotlib
+PyYAML

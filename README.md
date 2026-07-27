@@ -1,138 +1,74 @@
-# Motion Sickness EEG Data Process Demo
+# Public processing code and disclosure-reviewed results
 
-This folder provides 4 example scripts for EEG/EMG preprocessing and feature extraction.
-All examples are configured to use subject folder 25009 under the current working directory.
+This repository contains the public preprocessing and feature-extraction code
+for the motion-sickness EEG dataset, together with disclosure-reviewed
+aggregate results used in the accompanying manuscript. It is deliberately **not**
+a copy of the private processing workspace.
 
-## 1. Recommended Demo Folder Layout
+Repository: <https://github.com/vexpaer/motion_sickness_eeg_data_process_demo>
 
-Run scripts in this project directory, and prepare data like this:
+## What is included
 
 ```text
-motion_sickness_eeg_data_process_demo/
-	25009/
-		data.bdf
-		evt.bdf
-		crop.edf
-		... (optional: *crop*.edf, named files for feature extraction)
+github_upload_code/
+|-- README.md
+|-- config.yaml
+|-- requirements.txt
+|-- run_pipeline.py              # scan, crop, preprocess, feature extraction
+|-- src/eeg_pipeline/             # public processing modules
+`-- results/                      # aggregate, disclosure-reviewed CSV outputs
+|   |-- data_integrity/
+|   |-- signal_quality/
+|   |-- ica/
+|   |-- features/
+|   |-- statistics/
+|   `-- models/
 ```
 
-## 2. Dependencies
+No BDF, EDF, FIF, NumPy array, feature matrix, window-level signal, or other
+waveform-bearing file is included. The controlled dataset is available only
+through the Science Data Bank record and its data-access agreement:
+<https://doi.org/10.57760/sciencedb.32147>.
 
-Required Python packages:
+## Reproduction boundary
 
-```bash
-pip install mne numpy pandas scipy tqdm matplotlib
+After obtaining authorized data, place the local `EEG_data/` directory next to
+this repository, or pass its path with `--data-root`. The public pipeline reads
+`data.bdf` and `evt.bdf` from that external directory and writes generated
+intermediate files to a local output directory. The repository does not upload
+those files or provide the statistical/model-training source code.
+
+```powershell
+python -m pip install -r requirements.txt
+python run_pipeline.py scan
+python run_pipeline.py crop
+python run_pipeline.py preprocess
+python run_pipeline.py features
 ```
 
-## 3. Example Scripts
+The processing order is marker-based lap segmentation, 1--40 Hz filtering,
+robust bad-channel detection and montage interpolation, average A1/A2
+rereferencing, resampling to 250 Hz, per-lap Infomax ICA, and six-window
+channel-level feature extraction. The exact thresholds are recorded in
+`config.yaml` and the feature definitions are provided in
+`results/features/feature_dictionary.csv`.
 
-### 3.1 preprocess.py
+## Public result files
 
-Purpose:
-- EEG preprocessing pipeline for one BDF file.
-- Steps: montage setup, manual bad-channel interpolation, re-reference (A1/A2), bandpass + notch filtering, ICA artifact removal.
+The `results/` directory contains aggregate summaries only. It includes data
+completeness and signal-quality summaries, ICA audit summaries, the complete
+feature dictionary, Fisher/Kruskal--Wallis and beta-band summaries, and the
+model metric/calibration tables reported in the manuscript. Individual-lap
+signals, per-window feature values, out-of-fold predictions, and fold-level
+files are intentionally excluded.
 
-Input:
-- ./25009/data.bdf
+Manuscript figures, table images, access statements, DUA files and confidential
+reviewer instructions are maintained in the journal submission package rather
+than in this code repository. The confidential reviewer-only access instructions
+and private reviewer link are not part of this public repository.
 
-Output:
-- ./25009/data_clean.edf
+## License and use
 
-How to run:
-
-```bash
-python preprocess.py
-```
-
-Notes:
-- This script is interactive (plots will pop up).
-- You need to select bad channels and inspect ICA components manually.
-
-### 3.2 crop_by_lap.py
-
-Purpose:
-- Segment lap-based static periods from BDF using event markers.
-- Splits into 6 segments and exports each as an EDF file.
-
-Input:
-- ./25009/data.bdf
-- ./25009/evt.bdf
-
-Output:
-- ./25009/middle1.edf
-- ./25009/middle2.edf
-- ...
-- ./25009/middle6.edf
-
-How to run:
-
-```bash
-python crop_by_lap.py
-```
-
-### 3.3 baseline.py
-
-Purpose:
-- Perform baseline correction using channel-wise mean values from crop.edf.
-- Apply correction to all files matching *crop*.edf in the same folder.
-
-Input:
-- Baseline file: ./25009/crop.edf
-- Target files: ./25009/*crop*.edf
-
-Output:
-- For each target file, export a corrected file with crop replaced by final.
-
-How to run:
-
-```bash
-python baseline.py
-```
-
-### 3.4 extract_feature.py
-
-Purpose:
-- Unified EEG feature extraction script with optional interactive selection.
-- Supports 6 feature groups:
-	- time (variance, RMS)
-	- hjorth
-	- psd (delta/theta/alpha/beta)
-	- de (differential entropy)
-	- plv (phase locking value)
-	- wpli (weighted phase lag index)
-
-Default behavior:
-- Reads files in ./25009
-- Splits each file into 6 segments
-- Applies filtering and optional resampling
-- Writes one combined CSV
-
-Default output:
-- ./features_25009.csv
-
-How to run:
-
-```bash
-python extract_feature.py
-```
-
-Useful arguments:
-
-```bash
-python extract_feature.py --data-dir 25009 --output features_25009.csv --no-interactive
-python extract_feature.py --features time,hjorth,psd
-python extract_feature.py --channels Fp1,Fp2,C3,C4
-```
-
-## 4. Typical Demo Order
-
-1. Run crop_by_lap.py to generate segment files.
-2. Run preprocess.py for preprocessing of raw BDF.
-3. Run baseline.py for baseline correction (if needed).
-4. Run extract_feature.py to export feature table.
-
-## 5. Notes
-
-- File naming rules in extract_feature.py are strict for automatic discovery.
-- If a script reports missing channels or files, check the 25009 folder first.
-- All paths are relative to current working directory for easy GitHub demonstration.
+Code and aggregate result files are provided for reproducibility of the
+published work. Dataset access, human-data handling, and redistribution are
+governed by the Science Data Bank record and the DUA, not by this code archive.

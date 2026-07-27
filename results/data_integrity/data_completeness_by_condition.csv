@@ -1,0 +1,4 @@
+condition,valid_sessions,expected_sessions,usable_laps,missing_laps,missing_lap_rate,feature_windows,resting_recordings
+normal_driving,14,15,84,6,0.0666666667,504,30
+fast_driving,15,15,90,0,0.0,540,30
+total,29,30,174,6,0.2,1044,60

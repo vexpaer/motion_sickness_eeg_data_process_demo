@@ -1,0 +1,10 @@
+﻿label,class,count,proportion,unit,balance_method
+misc_3class_id,0,654,0.6264367816091954,window,class_weight
+misc_3class_id,1,324,0.3103448275862069,window,class_weight
+misc_3class_id,2,66,0.06321839080459771,window,class_weight
+misc_binary_2plus,0,654,0.6264367816091954,window,class_weight
+misc_binary_2plus,1,390,0.3735632183908046,window,class_weight
+misc_binary_6plus,0,978,0.9367816091954023,window,class_weight
+misc_binary_6plus,1,66,0.06321839080459771,window,class_weight
+susceptibility_id,0,612,0.5862068965517241,window,class_weight
+susceptibility_id,1,432,0.41379310344827586,window,class_weight
