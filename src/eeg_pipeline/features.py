@@ -28,8 +28,6 @@ def _bandpower(freqs: np.ndarray, psd: np.ndarray, low: float, high: float) -> f
     idx = (freqs >= low) & (freqs < high)
     if not np.any(idx):
         return 0.0
-    # NumPy 2 removed the historical np.trapz alias; retain compatibility with
-    # older environments while using the same trapezoidal integration rule.
     integrator = getattr(np, "trapezoid", getattr(np, "trapz", None))
     if integrator is None:
         raise AttributeError("NumPy provides neither trapezoid nor trapz")
@@ -120,7 +118,6 @@ def describe_feature(
     feature_name: str,
     modeling_channels: list[str] | None = None,
 ) -> dict[str, str]:
-    """Return a reconstruction-ready row for one generated feature variable."""
     modeling_channels = modeling_channels or []
 
     if feature_name.startswith("qc__"):
@@ -260,9 +257,6 @@ def extract_features(config: dict[str, Any], preprocessed_manifest_path: Path, o
     try:
         dictionary.to_csv(dictionary_path, index=False, encoding="utf-8-sig")
     except PermissionError:
-        # Keep feature generation usable when a spreadsheet viewer has the
-        # canonical dictionary open. The fallback is deliberately explicit so
-        # the generated file can be renamed after the viewer is closed.
         dictionary.to_csv(feature_dir / "feature_dictionary_reconstruction.csv", index=False, encoding="utf-8-sig")
     _write_channel_quality_summary(features, feature_dir)
     return features

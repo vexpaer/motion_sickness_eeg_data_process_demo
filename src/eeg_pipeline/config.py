@@ -88,6 +88,13 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "low_gamma": [30.0, 40.0],
         },
     },
+    "model": {
+        "group_level": "lap",
+        "balance_method": "class_weight",
+        "select_k": 100,
+        "labels": ["misc_3class_id", "misc_binary_2plus", "misc_binary_6plus", "susceptibility_id"],
+        "random_state": 97,
+    },
 }
 
 

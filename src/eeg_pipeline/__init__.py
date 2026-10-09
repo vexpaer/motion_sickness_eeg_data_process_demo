@@ -1,11 +1,15 @@
-"""Reproducible EEG processing pipeline for the Scientific Data revision."""
-
 __all__ = [
     "config",
     "crop",
     "events",
     "features",
+    "figures",
     "io",
     "manifest",
+    "modeling",
     "preprocess",
+    "quality",
+    "resting_baseline",
+    "revision2",
+    "statistics",
 ]

@@ -43,7 +43,6 @@ def _integrate(values: np.ndarray, freqs: np.ndarray) -> float:
 
 
 def _signal_quality_metrics(raw: mne.io.BaseRaw) -> dict[str, float]:
-    """Return compact lap-level metrics for the before/after ICA audit."""
     data_uV = raw.copy().pick("eeg").get_data() * 1e6
     if data_uV.size == 0:
         return {
@@ -122,9 +121,6 @@ def run_ica(raw: mne.io.BaseRaw, cfg: dict[str, Any]) -> tuple[mne.io.BaseRaw, p
     try:
         ica.fit(raw, picks="eeg", verbose="ERROR")
     except (RuntimeError, ValueError) as exc:
-        # With highly low-rank, rereferenced laps, the 99% target can resolve
-        # to one PCA component, which MNE correctly refuses for ICA. Retry
-        # with the configured minimum so ICA remains defined and auditable.
         if isinstance(requested_components, float) and "One PCA component" in str(exc):
             n_eeg = len(mne.pick_types(raw.info, eeg=True, exclude="bads"))
             fallback_components = min(n_eeg, min_components)
@@ -180,10 +176,6 @@ def preprocess_laps(config: dict[str, Any], cropped_manifest_path: Path, output_
             montage = mne.channels.make_standard_montage(montage_name)
             raw.set_montage(montage, on_missing="ignore", verbose="ERROR")
 
-        # The preprocessing order is deliberate: filtering is applied before
-        # bad-channel statistics/interpolation, rereferencing, resampling, and
-        # per-lap ICA. No additional per-lap DC-offset subtraction is applied;
-        # the 1--40 Hz band-pass removes the DC component.
         _safe_filter(raw, float(preprocess_cfg["l_freq"]), float(preprocess_cfg["h_freq"]))
 
         bads = detect_bad_channels(raw, float(preprocess_cfg["bad_channel_z"]), float(preprocess_cfg["flat_std_uV"]))

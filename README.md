@@ -1,6 +1,6 @@
 # Public processing code and disclosure-reviewed results
 
-This repository contains the public preprocessing and feature-extraction code
+This repository contains the public processing and analysis code
 for the motion-sickness EEG dataset, together with disclosure-reviewed
 aggregate results used in the accompanying manuscript. It is deliberately **not**
 a copy of the private processing workspace.
@@ -36,7 +36,7 @@ After obtaining authorized data, place the local `EEG_data/` directory next to
 this repository, or pass its path with `--data-root`. The public pipeline reads
 `data.bdf` and `evt.bdf` from that external directory and writes generated
 intermediate files to a local output directory. The repository does not upload
-those files or provide the statistical/model-training source code.
+those files.
 
 ```powershell
 python -m pip install -r requirements.txt

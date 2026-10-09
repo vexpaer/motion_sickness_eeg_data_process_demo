@@ -50,12 +50,6 @@ def _decode_tal_bytes(tal_channels: np.ndarray) -> str:
 
 
 def read_neuracle_events(evt_path: str | Path, sfreq: float) -> list[EventMarker]:
-    """Read all Neuracle event markers from evt.bdf.
-
-    MNE's public annotations reader only exposes a subset for these files, so
-    this parser follows the vendor-style TAL parsing used in the previous code.
-    """
-
     evt_path = Path(evt_path)
     tal_text = _decode_tal_bytes(_read_tal_data(evt_path))
     pattern = r"([+-]\d+\.?\d*)(\x15(\d+\.?\d*))?(\x14.*?)\x14\x00"
