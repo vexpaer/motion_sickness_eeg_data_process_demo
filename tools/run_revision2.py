@@ -16,8 +16,8 @@ import pandas as pd
 from eeg_pipeline import revision2 as r2
 from eeg_pipeline.config import load_config
 
-STEPS = ["composition", "loso", "uncertainty", "without", "stats", "auc", "labelonly", "permutation", "rawperm"]
-SLOW_STEPS = {"permutation", "rawperm"}
+STEPS = ["composition", "loso", "uncertainty", "without", "stats", "auc", "labelonly", "permutation", "rawperm", "psdfig", "channels", "partitions", "bootstrap"]
+SLOW_STEPS = {"permutation", "rawperm", "bootstrap"}
 
 
 def main() -> None:
@@ -26,6 +26,7 @@ def main() -> None:
     parser.add_argument("--n-perm", type=int, default=1000, help="susceptibility LOSO label permutations")
     parser.add_argument("--n-raw-perm", type=int, default=500, help="LOSO MISC 3-class within-participant label permutations")
     parser.add_argument("--n-stat-perm", type=int, default=10000, help="within-participant permutations")
+    parser.add_argument("--n-boot", type=int, default=1000, help="parametric bootstrap replicates for the mixed-model LRT")
     parser.add_argument("--exclude-participant", default="25017")
     args = parser.parse_args()
 
@@ -61,6 +62,14 @@ def main() -> None:
             raw_dir.mkdir(parents=True, exist_ok=True)
             features = df[[c for c in df.columns if not c.startswith("qc__")]]
             print(rb.permutation_test(features, raw_dir, select_k, args.n_raw_perm, seed).to_string())
+        elif step == "psdfig":
+            print(r2.psd_validation_figure(df, out_dir)[["feature", "q_lmm_bh", "q_perm_participant", "beta_high_vs_none_sd"]].to_string())
+        elif step == "channels":
+            print(r2.channel_statistics_table(out_dir).to_string())
+        elif step == "bootstrap":
+            print(r2.parametric_bootstrap_lrt(df, out_dir, r2.BOOTSTRAP_FEATURES, args.n_boot, seed).to_string())
+        elif step == "partitions":
+            print(r2.alternative_partition_tests(df, out_dir, args.n_stat_perm, seed).to_string())
         elif step == "permutation":
             print(r2.susceptibility_permutation_test(df, out_dir, select_k, args.n_perm, seed).to_string())
         print(f"[{step}] done in {time.time() - start:.0f}s", flush=True)

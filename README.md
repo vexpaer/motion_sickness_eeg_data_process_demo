@@ -57,7 +57,7 @@ channel-level feature extraction. The exact thresholds are recorded in
 
 The `results/` directory contains aggregate summaries only. It includes data
 completeness and signal-quality summaries, ICA audit summaries, the complete
-feature dictionary, Fisher/Kruskal--Wallis and beta-band summaries, and the
+feature dictionary, mixed-model, Kruskal--Wallis, permutation and band-power summaries, and the
 model metric/calibration tables reported in the manuscript. Individual-lap
 signals, per-window feature values, out-of-fold predictions, and fold-level
 files are intentionally excluded.

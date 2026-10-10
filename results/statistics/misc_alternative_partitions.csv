@@ -1,0 +1,3 @@
+﻿scheme,lmm_features,lmm_channels,kw_features,kw_channels,perm_features,perm_channels,perm_channels_calibrated,perm_calibrated_channel_names,po3_lmm_features
+0-2_3-5_6-10,33,7,98,21,0,0,1,PO3,19
+0-1_2-4_5-10,44,13,167,25,6,2,1,PO3,14

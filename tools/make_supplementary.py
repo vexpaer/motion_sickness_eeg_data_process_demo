@@ -25,6 +25,10 @@ def f(x: float, digits: int = 3) -> str:
     return "--" if pd.isna(x) else f"{x:.{digits}f}"
 
 
+def fq(q: float) -> str:
+    return "$<$0.001" if q < 0.001 else f(q)
+
+
 def ci(x: float, lo: float, hi: float) -> str:
     return f"{f(x)} ({f(lo, 2)}--{f(hi, 2)})"
 
@@ -120,19 +124,50 @@ def table_s2() -> str:
 
 
 def table_s3() -> str:
-    comp = pd.read_csv(R2 / "statistics" / "misc_channel_participant_aware_comparison.csv")
+    stats = R2 / "statistics"
+    comp = pd.read_csv(stats / "misc_channel_participant_aware_comparison.csv").set_index("entity")
+    adj = pd.read_csv(stats / "misc_lmm_adjusted_feature_tests.csv")
+    comp["min_q_lmm_adjusted"] = adj.groupby("entity")["q_lmm_bh"].min()
+    order = pd.read_csv(stats / "misc_channel_statistics_table.csv")["entity"]
     rows = [
-        f"\\texttt{{{r.entity}}} & {r.n_sig_kw} & {r.n_sig_kw_without_25017} & {r.n_sig_lmm} & {r.n_sig_lmm_adjusted} & "
-        f"{r.n_sig_perm_participant} & {r.n_sig_perm_session} & {f(r.q_kw_naive_fisher)} & {f(r.q_channel_perm_free)} & {f(r.q_channel_perm_participant)}"
-        for r in comp.itertuples()
+        f"\\texttt{{{r.entity}}} & {r.n_sig_lmm} & {r.n_sig_lmm_adjusted} & {fq(r.min_q_lmm_adjusted)} & {r.n_sig_kw} & "
+        f"{r.n_sig_perm_participant} & {fq(r.q_channel_perm_participant)}"
+        for r in comp.loc[order].reset_index().itertuples()
     ]
     return table(
         "tab:s3",
-        "Channel-level comparison of lap-level and participant-aware MISC analyses. Count columns give the number of the channel's 21 features with "
-        "$q<0.05$ (BH correction across 630 features). Channel $q$ values: naive Fisher combination (assumes independent features), and Fisher "
-        "statistic calibrated against 10,000 free or within-participant label permutations (BH across 30 channels).",
-        "@{}lccccccccc@{}",
-        "Channel & KW & KW w/o 25017 & LMM & LMM adj. & Perm. part. & Perm. sess. & $q$ naive Fisher & $q$ perm. free & $q$ perm. part.",
+        "Channel-level results of the MISC-stratified statistics, including the sensitivity analysis. Count columns give the number of the "
+        "channel's 21 features with $q<0.05$ (BH correction across 630 features): mixed model (LMM, primary analysis), mixed model with "
+        "driving condition and lap order as additional fixed effects (LMM adj.), lap-level Kruskal--Wallis test (KW), and participant-stratified "
+        "permutation of the Kruskal--Wallis $H$ statistic (10,000 within-participant permutations; Perm.). Channel $q$: Fisher combination of "
+        "the channel's 21 feature-level $p$ values calibrated against the within-participant permutations (BH across 30 channels). Channels "
+        "are ordered as in Table 7 of the main text.",
+        "@{}lcccccc@{}",
+        "Channel & LMM & LMM adj. & LMM adj. min. $q$ & KW & Perm. & Perm. channel $q$",
+        rows,
+    )
+
+
+def table_s5() -> str:
+    stats = R2 / "statistics"
+    sel = pd.read_csv(stats / "psd_validation_features.csv")
+    adj = pd.read_csv(stats / "misc_lmm_adjusted_feature_tests.csv").set_index("feature")["q_lmm_bh"]
+    kw = pd.read_csv(OUT / "statistics" / "misc_kruskal_tests.csv").set_index("feature")["q_kruskal_bh"]
+    band = {"theta": "$\\theta$ (4--8 Hz)", "alpha": "$\\alpha$ (8--13 Hz)", "beta": "$\\beta$ (13--30 Hz)"}
+    rows = [
+        f"\\texttt{{{r.entity}}} & {band[r.band]} & {'absolute' if r.measure == 'absolute_power' else 'relative'} & "
+        f"{r.beta_mild_vs_none_sd:+.2f} & {r.beta_high_vs_none_sd:+.2f} & {fq(r.q_lmm_bh)} & {fq(adj[r.feature])} & "
+        f"{fq(kw[r.feature])} & {fq(r.q_perm_participant)}"
+        for r in sel.itertuples()
+    ]
+    return table(
+        "tab:s5",
+        "Theta, alpha and beta PSD features with $q<0.05$ in the mixed model. Effects are fixed-effect differences from the none-to-low "
+        "stratum in standard deviations (absolute power log10-transformed). All $q$ values are BH-adjusted across 630 features: mixed model "
+        "(LMM), mixed model adjusted for driving condition and lap order (LMM adj.), lap-level Kruskal--Wallis test (KW), and "
+        "participant-stratified permutation (Perm.). The three PO3 absolute-power features are shown in Fig. 7 of the main text.",
+        "@{}lllcccccc@{}",
+        "Channel & Band & Power & Mild vs none & High vs none & LMM $q$ & LMM adj. $q$ & KW $q$ & Perm. $q$",
         rows,
     )
 
@@ -188,11 +223,11 @@ def figure_s1(out_dir: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Write Supplementary Tables S1-S4 (LaTeX) and Fig. S1.")
+    parser = argparse.ArgumentParser(description="Write Supplementary Tables S1-S5 (LaTeX) and Fig. S1.")
     parser.add_argument("output_dir", help="directory for supplementary_tables.tex and figure_s1_permutation_nulls.png")
     out_dir = Path(parser.parse_args().output_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    tables = "\n".join([table_s1(), table_s2(), table_s3(), table_s4()])
+    tables = "\n".join([table_s1(), table_s2(), table_s3(), table_s4(), table_s5()])
     (out_dir / "supplementary_tables.tex").write_text(tables, encoding="utf-8")
     figure_s1(out_dir)
     print("wrote", out_dir)

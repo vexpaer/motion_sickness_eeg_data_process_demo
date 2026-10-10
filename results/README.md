@@ -11,5 +11,5 @@ participant-level signal traces are intentionally excluded.
 | `signal_quality/` | condition-level amplitude, spectral, and bad-channel summaries |
 | `ica/` | condition-level ICA component and pre/post quality audits |
 | `features/` | reconstruction-ready feature dictionary and channel-level QC summaries |
-| `statistics/` | MISC Kruskal--Wallis/Fisher/Dunn results, beta-band tests, sensitivity analyses, and condition/susceptibility summaries |
+| `statistics/` | MISC mixed-model, Kruskal--Wallis and participant-stratified permutation tests, channel-level summary, band-power (PSD) validation, parametric-bootstrap LRT, alternative partitions, and condition/susceptibility summaries |
 | `models/` | aggregate benchmark metrics, sensitivity results, label distributions, AUC intervals, and calibration summaries |

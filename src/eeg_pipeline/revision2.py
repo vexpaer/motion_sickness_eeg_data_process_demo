@@ -568,3 +568,198 @@ def auc_aggregation_table(primary_dir: Path, loso_dir: Path, out_dir: Path) -> p
             )
         )
     return _write(pd.concat(frames, ignore_index=True), out_dir / "benchmark_auc_by_aggregation_level.csv")
+
+
+BOOTSTRAP_FEATURES = ["PO3__psd__theta_abs_uV2", "PO3__psd__alpha_abs_uV2", "PO3__psd__beta_abs_uV2"]
+
+
+def parametric_bootstrap_lrt(
+    df: pd.DataFrame, out_dir: Path, features: list[str], n_boot: int, random_state: int
+) -> pd.DataFrame:
+    lap_df = _lap_level(df, features)
+    work = lap_df[lap_df["misc_3class_label"].isin(MISC_ORDER)].reset_index(drop=True)
+    rng = np.random.default_rng(random_state)
+    rows = []
+    for feature in features:
+        values = pd.to_numeric(work[feature], errors="coerce").to_numpy(dtype=float)
+        if _log_scale(feature) and np.all(values[np.isfinite(values)] > 0):
+            values = np.log10(values)
+        data = pd.DataFrame(
+            {
+                "y": (values - np.nanmean(values)) / np.nanstd(values),
+                "stratum": work["misc_3class_label"].to_numpy(),
+                "subject": work["subject_id"].astype(str).to_numpy(),
+            }
+        ).dropna()
+        full = _fit_ml(f"y ~ {LMM_TERM}", data)
+        null = _fit_ml("y ~ 1", data)
+        observed = max(2.0 * (full.llf - null.llf), 0.0)
+        subjects, codes = np.unique(data["subject"], return_inverse=True)
+        intercept = float(null.fe_params.iloc[0])
+        sd_subject = float(np.sqrt(max(null.cov_re.iloc[0, 0], 0.0)))
+        sd_resid = float(np.sqrt(null.scale))
+        simulated = []
+        for _ in range(n_boot):
+            sim = data.copy()
+            sim["y"] = intercept + rng.normal(0.0, sd_subject, len(subjects))[codes] + rng.normal(0.0, sd_resid, len(sim))
+            simulated.append(max(2.0 * (_fit_ml(f"y ~ {LMM_TERM}", sim).llf - _fit_ml("y ~ 1", sim).llf), 0.0))
+        simulated = np.asarray(simulated)
+        rows.append(
+            {
+                "feature": feature,
+                "lr_statistic": observed,
+                "p_chi2": float(chi2.sf(observed, df=2)),
+                "p_parametric_bootstrap": float((np.sum(simulated >= observed) + 1) / (n_boot + 1)),
+                "n_bootstrap": n_boot,
+                "beta_high_vs_none_sd": float(full.fe_params.get(f"{LMM_TERM}[T.high]", np.nan)),
+            }
+        )
+    return _write(pd.DataFrame(rows), out_dir / "statistics" / "lmm_parametric_bootstrap.csv")
+
+
+ALTERNATIVE_PARTITIONS = {
+    "0-2_3-5_6-10": [(0, 2), (3, 5), (6, 10)],
+    "0-1_2-4_5-10": [(0, 1), (2, 4), (5, 10)],
+}
+
+
+def channel_statistics_table(out_dir: Path) -> pd.DataFrame:
+    stats_dir = out_dir / "statistics"
+    lmm = pd.read_csv(stats_dir / "misc_lmm_feature_tests.csv")
+    kw = pd.read_csv(Path(out_dir).parent / "statistics" / "misc_kruskal_tests.csv")
+    perm = pd.read_csv(stats_dir / "misc_kw_permutation_participant_features.csv")
+    perm_ch = pd.read_csv(stats_dir / "misc_kw_permutation_participant_channels.csv")
+
+    def counts(frame: pd.DataFrame, q_col: str) -> pd.Series:
+        return (frame[q_col] < 0.05).groupby(frame["entity"]).sum().astype(int)
+
+    table = pd.DataFrame(
+        {
+            "n_sig_lmm": counts(lmm, "q_lmm_bh"),
+            "min_q_lmm": lmm.groupby("entity")["q_lmm_bh"].min(),
+            "n_sig_kw": counts(kw, "q_kruskal_bh"),
+            "n_sig_perm_participant": counts(perm, "q_perm_bh"),
+            "q_channel_perm_participant": perm_ch.set_index("entity")["q_channel_perm_bh"],
+        }
+    )
+    table = table.rename_axis("entity").reset_index().sort_values(["n_sig_lmm", "min_q_lmm"], ascending=[False, True])
+    return _write(table, stats_dir / "misc_channel_statistics_table.csv")
+
+
+def alternative_partition_tests(df: pd.DataFrame, out_dir: Path, n_perm: int, random_state: int) -> pd.DataFrame:
+    stat_cols = _stat_columns(df)
+    lap_df = _lap_level(df, stat_cols)
+    score = pd.to_numeric(lap_df["misc_score"], errors="coerce")
+    rows = []
+    for scheme, bins in ALTERNATIVE_PARTITIONS.items():
+        work = lap_df.copy()
+        work["misc_3class_label"] = None
+        for (low, high), label in zip(bins, MISC_ORDER):
+            work.loc[(score >= low) & (score <= high), "misc_3class_label"] = label
+        lmm = mixed_model_tests(work, stat_cols, adjust=False)
+        kw, _ = misc_kruskal_dunn_tests(work, stat_cols)
+        perm, perm_ch = kw_permutation_tests(work, stat_cols, n_perm, random_state, ["subject_id"])
+        rows.append(
+            {
+                "scheme": scheme,
+                "lmm_features": int((lmm["q_lmm_bh"] < 0.05).sum()),
+                "lmm_channels": _significant_channels(lmm, "q_lmm_bh"),
+                "kw_features": int((kw["q_kruskal_bh"] < 0.05).sum()),
+                "kw_channels": _significant_channels(kw, "q_kruskal_bh"),
+                "perm_features": int((perm["q_perm_bh"] < 0.05).sum()),
+                "perm_channels": _significant_channels(perm, "q_perm_bh"),
+                "perm_channels_calibrated": int((perm_ch["q_channel_perm_bh"] < 0.05).sum()),
+                "perm_calibrated_channel_names": ",".join(perm_ch.loc[perm_ch["q_channel_perm_bh"] < 0.05, "entity"]),
+                "po3_lmm_features": int(((lmm["q_lmm_bh"] < 0.05) & (lmm["entity"] == "PO3")).sum()),
+            }
+        )
+    return _write(pd.DataFrame(rows), out_dir / "statistics" / "misc_alternative_partitions.csv")
+
+
+PSD_BANDS = ["theta", "alpha", "beta"]
+BAND_SYMBOLS = {"theta": "θ", "alpha": "α", "beta": "β"}
+BAND_RANGES = {"theta": "4–8 Hz", "alpha": "8–13 Hz", "beta": "13–30 Hz"}
+PSD_FIG_FONT = 9
+
+
+def psd_validation_figure(df: pd.DataFrame, out_dir: Path, alpha: float = 0.05) -> pd.DataFrame:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    stats_dir = out_dir / "statistics"
+    lmm = pd.read_csv(stats_dir / "misc_lmm_feature_tests.csv")
+    perm = pd.read_csv(stats_dir / "misc_kw_permutation_participant_features.csv").set_index("feature")["q_perm_bh"]
+    selected = lmm[(lmm["q_lmm_bh"] < alpha) & (lmm["feature_family"] == "psd") & lmm["band"].isin(PSD_BANDS)].copy()
+    selected["q_perm_participant"] = selected["feature"].map(perm)
+    adjusted = pd.read_csv(stats_dir / "misc_lmm_adjusted_feature_tests.csv").set_index("feature")["q_lmm_bh"]
+    kw = pd.read_csv(Path(out_dir).parent / "statistics" / "misc_kruskal_tests.csv").set_index("feature")["q_kruskal_bh"]
+    selected["q_lmm_adjusted"] = selected["feature"].map(adjusted)
+    selected["q_kw"] = selected["feature"].map(kw)
+    selected["band_order"] = selected["band"].map(PSD_BANDS.index)
+    selected["measure_order"] = (selected["measure"] != "absolute_power").astype(int)
+    selected = selected.sort_values(["band_order", "measure_order", "q_lmm_bh"]).reset_index(drop=True)
+    _write(
+        selected[["feature", "entity", "band", "measure", "q_lmm_bh", "q_lmm_adjusted", "q_kw", "q_perm_participant", "beta_mild_vs_none_sd", "beta_high_vs_none_sd"]],
+        stats_dir / "psd_validation_features.csv",
+    )
+    shown = selected[selected["q_perm_participant"] < alpha].reset_index(drop=True)
+
+    stat_cols = _stat_columns(df)
+    laps = _lap_level(df, stat_cols)
+    laps = laps[laps["misc_3class_label"].isin(MISC_ORDER)]
+    subjects = sorted(laps["subject_id"].astype(str).unique())
+    cmap = plt.get_cmap("tab20")
+    colours = {s: cmap(i % 20) for i, s in enumerate(subjects)}
+    tick_labels = ["None–low\n(0–1)", "Mild–mod.\n(2–5)", "High\n(6–10)"]
+
+    plt.rcParams.update({"font.family": "DejaVu Sans", "font.size": PSD_FIG_FONT, "axes.titlesize": PSD_FIG_FONT,
+                         "axes.labelsize": PSD_FIG_FONT, "xtick.labelsize": PSD_FIG_FONT, "ytick.labelsize": PSD_FIG_FONT,
+                         "legend.fontsize": PSD_FIG_FONT, "legend.title_fontsize": PSD_FIG_FONT})
+    fig, axes = plt.subplots(1, len(shown), figsize=(7.5, 4.6), squeeze=False, sharey=True)
+    rng = np.random.default_rng(0)
+    for ax, (_, row) in zip(axes[0], shown.iterrows()):
+        feature = row["feature"]
+        groups = [laps.loc[laps["misc_3class_label"] == s, [feature, "subject_id"]] for s in MISC_ORDER]
+        ax.boxplot(
+            [g[feature].to_numpy(dtype=float) for g in groups],
+            positions=[1, 2, 3],
+            widths=0.55,
+            showfliers=False,
+            medianprops={"color": "black"},
+            boxprops={"color": "#555555"},
+            whiskerprops={"color": "#555555"},
+            capprops={"color": "#555555"},
+        )
+        for pos, g in enumerate(groups, start=1):
+            ax.scatter(
+                pos + rng.uniform(-0.18, 0.18, len(g)),
+                g[feature].to_numpy(dtype=float),
+                s=8,
+                c=[colours[str(s)] for s in g["subject_id"]],
+                alpha=0.85,
+                linewidths=0,
+                zorder=3,
+            )
+        ax.set_yscale("log")
+        ax.set_xticks([1, 2, 3], tick_labels)
+        ax.set_xlabel("MISC stratum")
+        band = row["band"]
+        ax.set_title(
+            f"{row['entity']} {BAND_SYMBOLS[band]} ({BAND_RANGES[band]})\n"
+            f"High vs none: {row['beta_high_vs_none_sd']:+.2f} SD\n"
+            f"LMM q={row['q_lmm_bh']:.3f}; adj. q={row['q_lmm_adjusted']:.3f}\n"
+            f"KW q={row['q_kw']:.3f}; perm. q={row['q_perm_participant']:.3f}",
+        )
+        ax.grid(axis="y", alpha=0.25)
+    axes[0, 0].set_ylabel("Absolute power (µV², log scale)")
+    handles = [plt.Line2D([], [], marker="o", markersize=4, linestyle="", color=colours[s], label=s) for s in subjects]
+    fig.legend(handles=handles, title="Participant", loc="upper center", bbox_to_anchor=(0.5, 0.0), ncol=8,
+               frameon=False, handletextpad=0.2, columnspacing=0.8)
+    fig.tight_layout()
+    fig_dir = out_dir / "figures"
+    fig_dir.mkdir(parents=True, exist_ok=True)
+    fig.savefig(fig_dir / "psd_validation_theta_alpha_beta.png", dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    return selected
