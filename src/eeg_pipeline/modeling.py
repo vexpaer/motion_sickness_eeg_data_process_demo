@@ -267,27 +267,58 @@ def _calibration_table(y_true: np.ndarray, prob: np.ndarray, classes: np.ndarray
     return pd.DataFrame(rows)
 
 
-def _plot_confusion(y_true: np.ndarray, y_pred: np.ndarray, classes: np.ndarray, title: str, output: Path) -> None:
+_TASK_TITLES = {
+    "misc_3class_id": "Three-class MISC",
+    "misc_binary_2plus": "MISC \u2265 2",
+    "misc_binary_6plus": "MISC \u2265 6",
+    "susceptibility_id": "Susceptibility",
+}
+_MODEL_TITLES = {"LogisticRegression": "logistic regression", "SVM_RBF": "SVM (RBF)", "RandomForest": "random forest"}
+_CLASS_NAMES = {
+    "misc_3class_id": ["None-to-low (0\u20131)", "Mild-to-moderate (2\u20135)", "High (6\u201310)"],
+    "misc_binary_2plus": ["MISC < 2", "MISC \u2265 2"],
+    "misc_binary_6plus": ["MISC < 6", "MISC \u2265 6"],
+    "susceptibility_id": ["Non-susceptible", "Susceptible"],
+}
+
+
+def _display_names(label_col: str, model_name: str, classes: np.ndarray) -> tuple[str, list[str]]:
+    names = _CLASS_NAMES.get(label_col)
+    if names is None or len(names) != len(classes):
+        names = [str(c) for c in classes]
+    else:
+        names = [names[int(c)] for c in classes]
+    title = f"{_TASK_TITLES.get(label_col, label_col)}, {_MODEL_TITLES.get(model_name, model_name)}"
+    return title, names
+
+
+def _plot_confusion(y_true: np.ndarray, y_pred: np.ndarray, classes: np.ndarray, names: list[str], title: str, output: Path) -> None:
     cm = confusion_matrix(y_true, y_pred, labels=classes, normalize="true")
-    fig, ax = plt.subplots(figsize=(5, 4))
-    ConfusionMatrixDisplay(cm, display_labels=[str(c) for c in classes]).plot(ax=ax, cmap="Blues", values_format=".2f")
+    fig, ax = plt.subplots(figsize=(6.4, 4.8))
+    wrapped = [name.replace(" (", "\n(") for name in names]
+    ConfusionMatrixDisplay(cm, display_labels=wrapped).plot(ax=ax, cmap="Blues", values_format=".2f")
+    ax.set_xlabel("Predicted class")
+    ax.set_ylabel("True class")
+    ax.tick_params(labelsize=9)
     ax.set_title(title)
     fig.tight_layout()
     fig.savefig(output, dpi=300)
     plt.close(fig)
 
 
-def _plot_roc(y_true: np.ndarray, prob: np.ndarray, classes: np.ndarray, title: str, output: Path) -> None:
+def _plot_roc(y_true: np.ndarray, prob: np.ndarray, classes: np.ndarray, names: list[str], title: str, output: Path) -> None:
     fig, ax = plt.subplots(figsize=(5, 4))
     if len(classes) == 2:
         fpr, tpr, _ = roc_curve(y_true, prob[:, 1], pos_label=classes[1])
-        ax.plot(fpr, tpr, label=f"class {classes[1]}")
+        auc = roc_auc_score((y_true == classes[1]).astype(int), prob[:, 1])
+        ax.plot(fpr, tpr, label=f"{names[1]} (AUC {auc:.3f})")
     else:
         y_bin = label_binarize(y_true, classes=classes)
         for idx, cls in enumerate(classes):
             if len(np.unique(y_bin[:, idx])) > 1:
                 fpr, tpr, _ = roc_curve(y_bin[:, idx], prob[:, idx])
-                ax.plot(fpr, tpr, label=f"class {cls}")
+                auc = roc_auc_score(y_bin[:, idx], prob[:, idx])
+                ax.plot(fpr, tpr, label=f"{names[idx]} (AUC {auc:.3f})")
     ax.plot([0, 1], [0, 1], color="0.5", linestyle="--", linewidth=1)
     ax.set_xlabel("False positive rate")
     ax.set_ylabel("True positive rate")
@@ -481,8 +512,9 @@ def evaluate_label(
             oof[f"prob_class_{cls}"] = prob_valid[:, idx]
         oof.to_csv(output_dir / f"oof_{label_col}_{model_name}.csv", index=False, encoding="utf-8-sig")
         pd.DataFrame(fold_rows).to_csv(output_dir / f"folds_{label_col}_{model_name}.csv", index=False, encoding="utf-8-sig")
-        _plot_confusion(y_true, pred_valid, classes, f"{label_col} - {model_name}", output_dir / f"confusion_{label_col}_{model_name}.png")
-        _plot_roc(y_true, prob_valid, classes, f"{label_col} - {model_name}", output_dir / f"roc_{label_col}_{model_name}.png")
+        title, names = _display_names(label_col, model_name, classes)
+        _plot_confusion(y_true, pred_valid, classes, names, title, output_dir / f"confusion_{label_col}_{model_name}.png")
+        _plot_roc(y_true, prob_valid, classes, names, title, output_dir / f"roc_{label_col}_{model_name}.png")
 
     if feature_counts:
         rows = []

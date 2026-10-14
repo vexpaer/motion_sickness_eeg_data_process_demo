@@ -1,4 +1,4 @@
 condition,retained_laps,fitted_components,excluded_components,exclusion_rate,low_rank_component_laps
-fast_driving,90,1004,176,0.1752988047808765,14
-normal_driving,84,945,152,0.16084656084656085,24
+fast_driving,90,1004,176,0.1752988047808765,1
+normal_driving,84,945,152,0.16084656084656085,10
 total,174,1949,328,0.16829143150333503,11

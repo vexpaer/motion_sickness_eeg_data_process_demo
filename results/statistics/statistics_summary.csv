@@ -1,10 +1,5 @@
-﻿analysis,unit,features_tested,p_value,fdr_value,significant_q_lt_0_05,entities_tested
-condition_paired_fast_minus_normal,subject_condition_mean,630,p_signflip,q_signflip_bh,122,
-lap_level_misc_spearman,lap_mean,630,p_spearman,q_spearman_bh,81,
-subject_level_susceptibility_mannwhitney,subject_mean,630,p_mannwhitney,q_mannwhitney_bh,0,
-lap_level_misc_3class_kruskal,lap_mean,630,p_kruskal,q_kruskal_bh,172,
-lap_level_misc_3class_fisher_entity,lap_mean_entity_aggregate,630,combined_p_fisher,combined_fdr_bh,25,30.0
-lap_level_misc_3class_beta_absolute_psd,lap_mean_entity_feature,30,p_kruskal,q_kruskal_bh,9,30.0
-lap_level_misc_threshold_sensitivity_0-1_2-4_5-10,lap_mean_entity_aggregate,630,combined_p_fisher,combined_fdr_bh,24,30.0
-lap_level_misc_threshold_sensitivity_0-2_3-5_6-10,lap_mean_entity_aggregate,630,combined_p_fisher,combined_fdr_bh,22,30.0
-lap_level_misc_3class_dunn,lap_mean_pairwise,1890,p_dunn,q_dunn_bh,205,
+﻿analysis,unit,features_tested,p_value,fdr_value,significant_q_lt_0_05
+condition_paired_fast_minus_normal,subject_condition_mean,630,p_signflip,q_signflip_bh,122
+lap_level_misc_spearman,lap_mean,630,p_spearman,q_spearman_bh,81
+subject_level_susceptibility_mannwhitney,subject_mean,630,p_mannwhitney,q_mannwhitney_bh,0
+lap_level_misc_3class_kruskal,lap_mean,630,p_kruskal,q_kruskal_bh,172

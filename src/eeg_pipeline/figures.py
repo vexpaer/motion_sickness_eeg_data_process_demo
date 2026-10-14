@@ -108,72 +108,10 @@ def _make_data_record_figure(fig_dir: Path) -> None:
     plt.close(fig)
 
 
-def _make_beta_validation_figures(output_root: Path, fig_dir: Path) -> None:
-    top_path = output_root / "statistics" / "misc_beta_validation_representative.csv"
-    lap_path = output_root / "statistics" / "lap_level_channel_features.csv"
-    if not top_path.exists() or not lap_path.exists():
-        return
-    top = pd.read_csv(top_path)
-    laps = pd.read_csv(lap_path, dtype={"subject_id": str})
-    if top.empty or laps.empty or "misc_3class_label" not in laps:
-        return
-    order = ["none_to_low", "mild_to_moderate", "high"]
-    labels = ["None/low (0–1)", "Mild/moderate (2–5)", "High (6–10)"]
-    colors = ["#5b8ff9", "#61dDAA", "#f6bd16"]
-    fig, axes = plt.subplots(1, len(top), figsize=(15.2, 4.6), squeeze=False)
-    axes = axes.ravel()
-    plotted = 0
-    for ax, (_, row) in zip(axes, top.iterrows()):
-        feature = str(row["feature"])
-        if feature not in laps.columns:
-            continue
-        grouped = [
-            pd.to_numeric(laps.loc[laps["misc_3class_label"] == label, feature], errors="coerce").dropna().to_numpy(dtype=float)
-            for label in order
-        ]
-        if not all(len(values) for values in grouped):
-            continue
-        try:
-            bp = ax.boxplot(grouped, tick_labels=labels, patch_artist=True, showfliers=False, widths=0.55)
-        except TypeError:
-            bp = ax.boxplot(grouped, labels=labels, patch_artist=True, showfliers=False, widths=0.55)
-        for patch, color in zip(bp["boxes"], colors):
-            patch.set_facecolor(color)
-            patch.set_alpha(0.65)
-            patch.set_edgecolor("#334e68")
-        rng = np.random.default_rng(100 + int(row.get("beta_rank", plotted + 1)))
-        for idx, (values, color) in enumerate(zip(grouped, colors), start=1):
-            jitter = rng.normal(idx, 0.055, size=len(values))
-            ax.scatter(jitter, values, s=12, alpha=0.35, color=color, edgecolors="none", zorder=2)
-        feature_family = str(row.get("feature_family", ""))
-        measure = str(row.get("measure", "feature")).replace("_", " ")
-        if feature_family == "psd" and np.all(np.concatenate(grouped) > 0):
-            ax.set_yscale("log")
-            ax.set_ylabel("Absolute PSD (log scale)")
-        else:
-            combined = np.concatenate(grouped)
-            low, high = np.quantile(combined, [0.01, 0.99])
-            margin = max((high - low) * 0.08, 1e-6)
-            ax.set_ylim(low - margin, high + margin)
-            ax.set_ylabel(measure)
-        ax.set_xlabel("MISC category")
-        entity = str(row.get("entity", feature.split("__", 1)[0]))
-        ax.set_title(f"{entity} beta absolute PSD\nBH q={float(row['q_kruskal_bh']):.3g}")
-        ax.tick_params(axis="x", labelrotation=20, labelsize=8)
-        ax.grid(axis="y", alpha=0.2)
-        plotted += 1
-    if plotted:
-        fig.suptitle("Representative beta-band absolute PSD distributions by MISC category", y=1.02)
-        fig.tight_layout()
-        fig.savefig(fig_dir / "misc_beta_validation_representative_horizontal.png", dpi=300, bbox_inches="tight")
-    plt.close(fig)
-
-
 def make_figures(output_root: Path) -> None:
     fig_dir = output_root / "figures"
     fig_dir.mkdir(parents=True, exist_ok=True)
     _make_data_record_figure(fig_dir)
-    _make_beta_validation_figures(output_root, fig_dir)
 
     lap_manifest = output_root / "manifests" / "lap_manifest_preprocessed.csv"
     if lap_manifest.exists():
@@ -190,7 +128,11 @@ def make_figures(output_root: Path) -> None:
         plt.close(fig)
 
         fig, ax = plt.subplots(figsize=(6, 4))
-        usable.groupby(["condition_label", "misc_score"]).size().unstack(fill_value=0).T.plot(kind="bar", ax=ax)
+        counts = usable.groupby(["condition_label", "misc_score"]).size().unstack(fill_value=0).T
+        counts = counts.rename(columns={"normal": "Normal driving", "fast": "Fast driving"})
+        counts = counts.reindex(columns=["Normal driving", "Fast driving"], fill_value=0)
+        counts.plot(kind="bar", ax=ax, rot=0, color=["#4C78A8", "#F58518"])
+        ax.legend(title="Condition", frameon=False)
         ax.set_title("Lap-level MISC distribution")
         ax.set_xlabel("MISC score")
         ax.set_ylabel("Lap count")
@@ -237,8 +179,8 @@ def make_figures(output_root: Path) -> None:
             task_order = ["misc_3class_id", "misc_binary_2plus", "misc_binary_6plus", "susceptibility_id"]
             task_labels = {
                 "misc_3class_id": "MISC 3-class",
-                "misc_binary_2plus": "MISC >= 2",
-                "misc_binary_6plus": "MISC >= 6",
+                "misc_binary_2plus": "MISC \u2265 2",
+                "misc_binary_6plus": "MISC \u2265 6",
                 "susceptibility_id": "Susceptibility",
             }
             model_labels = {
@@ -271,7 +213,7 @@ def make_figures(output_root: Path) -> None:
             ax.set_axisbelow(True)
             ax.spines["top"].set_visible(False)
             ax.spines["right"].set_visible(False)
-            ax.legend(title="Model", frameon=False, ncol=3, loc="upper center", bbox_to_anchor=(0.5, 1.02))
+            ax.legend(title="Model", frameon=False, ncol=3, loc="upper center", bbox_to_anchor=(0.5, -0.16))
             fig.tight_layout(pad=1.2)
             fig.savefig(fig_dir / "model_macro_f1.png", dpi=300, bbox_inches="tight")
             plt.close(fig)

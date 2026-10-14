@@ -435,7 +435,7 @@ def participant_aware_statistics(
     summary = pd.DataFrame(
         [
             row(
-                "lap-level Kruskal-Wallis (primary)", kw, "q_kruskal_bh", "q_kw", perms["free"][1],
+                "lap-level Kruskal-Wallis (auxiliary)", kw, "q_kruskal_bh", "q_kw", perms["free"][1],
                 channels_naive_fisher_q_lt_0_05=int((kw_fisher["combined_fdr_bh"] < 0.05).sum()),
             ),
             row("LMM, participant random intercept", lmm, "q_lmm_bh", "q_lmm", lmm_converged=int(lmm["converged"].sum())),

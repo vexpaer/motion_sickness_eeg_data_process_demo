@@ -46,7 +46,6 @@ def perm_text(r: pd.Series, what: str, how: str) -> str:
 
 RAW_PERM = R2 / "models_loso" / "raw_feature_permutation" / "permutation_test.csv"
 SUSC_PERM = R2 / "models_loso" / "susceptibility_permutation_test.csv"
-REST_PERM = R2 / "resting_baseline" / "permutation_test.csv"
 
 
 def table(label: str, caption: str, spec: str, header: str, rows: list[str], size: str = r"\scriptsize") -> str:
@@ -148,7 +147,7 @@ def table_s3() -> str:
     )
 
 
-def table_s5() -> str:
+def table_s4() -> str:
     stats = R2 / "statistics"
     sel = pd.read_csv(stats / "psd_validation_features.csv")
     adj = pd.read_csv(stats / "misc_lmm_adjusted_feature_tests.csv").set_index("feature")["q_lmm_bh"]
@@ -161,7 +160,7 @@ def table_s5() -> str:
         for r in sel.itertuples()
     ]
     return table(
-        "tab:s5",
+        "tab:s4",
         "Theta, alpha and beta PSD features with $q<0.05$ in the mixed model. Effects are fixed-effect differences from the none-to-low "
         "stratum in standard deviations (absolute power log10-transformed). All $q$ values are BH-adjusted across 630 features: mixed model "
         "(LMM), mixed model adjusted for driving condition and lap order (LMM adj.), lap-level Kruskal--Wallis test (KW), and "
@@ -172,40 +171,14 @@ def table_s5() -> str:
     )
 
 
-def table_s4() -> str:
-    rb = pd.read_csv(R2 / "resting_baseline" / "metrics_resting_normalised.csv")
-    rows = []
-    for scheme, name in [("subject", "LOSO"), ("lap", "LOLO")]:
-        for task in ["misc_3class_id", "misc_binary_2plus", "misc_binary_6plus"]:
-            for model in MODEL:
-                r = rb[(rb["validation"] == scheme) & (rb["label"] == task) & (rb["model"] == model)].iloc[0]
-                rows.append(
-                    f"{name} & {TASK[task]} & {MODEL[model]} & {f(r['balanced_accuracy'])} & {f(r['f1_macro'])} & {f(r['auc_macro_ovr_lap'])}"
-                )
-    return table(
-        "tab:s4",
-        "Pre-specified resting-baseline normalization. Each driving window was expressed relative to the "
-        "median of the same session's pre-drive resting windows (log ratio for time-domain RMS, peak-to-peak amplitude and line length, Hjorth activity and absolute band power; difference otherwise). "
-        "Its primary test (logistic regression, "
-        + perm_text(perm(REST_PERM), "LOSO MISC 3-class lap-averaged AUC", "within-participant permutations")
-        + ") did not meet the pre-specified criterion. Pooled LOSO AUC is not centred on 0.5 when participants differ in "
-        "label composition, so the remaining LOSO values are descriptive and should not be read as above or below chance.",
-        "@{}lllccc@{}",
-        "Validation & Task & Model & Bal. acc. & Macro-F1 & AUC (lap)",
-        rows,
-    )
-
-
 def figure_s1(out_dir: Path) -> None:
     panels = [
         (R2 / "models_loso" / "raw_feature_permutation" / "permutation_null.csv", R2 / "models_loso" / "raw_feature_permutation" / "permutation_test.csv",
          "MISC 3-class, LOSO\n(lap-averaged macro-AUC)"),
         (R2 / "models_loso" / "susceptibility_permutation_null.csv", R2 / "models_loso" / "susceptibility_permutation_test.csv",
          "Susceptibility, LOSO\n(participant-level AUC)"),
-        (R2 / "resting_baseline" / "permutation_null.csv", R2 / "resting_baseline" / "permutation_test.csv",
-         "MISC 3-class, LOSO, resting-normalized\n(lap-averaged macro-AUC)"),
     ]
-    fig, axes = plt.subplots(1, 3, figsize=(11, 3.2), sharey=False)
+    fig, axes = plt.subplots(1, 2, figsize=(7.5, 3.2), sharey=False)
     for ax, (null_path, test_path, title) in zip(axes, panels):
         null = pd.read_csv(null_path).iloc[:, 0]
         test = pd.read_csv(test_path).iloc[0]
@@ -223,11 +196,11 @@ def figure_s1(out_dir: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Write Supplementary Tables S1-S5 (LaTeX) and Fig. S1.")
+    parser = argparse.ArgumentParser(description="Write Supplementary Tables S1-S4 (LaTeX) and Fig. S1.")
     parser.add_argument("output_dir", help="directory for supplementary_tables.tex and figure_s1_permutation_nulls.png")
     out_dir = Path(parser.parse_args().output_dir).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    tables = "\n".join([table_s1(), table_s2(), table_s3(), table_s4(), table_s5()])
+    tables = "\n".join([table_s1(), table_s2(), table_s3(), table_s4()])
     (out_dir / "supplementary_tables.tex").write_text(tables, encoding="utf-8")
     figure_s1(out_dir)
     print("wrote", out_dir)

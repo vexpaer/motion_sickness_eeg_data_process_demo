@@ -1,5 +1,5 @@
 ﻿analysis,features_q_lt_0_05,channels_with_sig_feature,channels_calibrated_q_lt_0_05,beta_channels_q_lt_0_05,channels_naive_fisher_q_lt_0_05,lmm_converged,informative_blocks
-lap-level Kruskal-Wallis (primary),172,25,22.0,9.0,25.0,,
+lap-level Kruskal-Wallis (auxiliary),172,25,22.0,9.0,25.0,,
 "LMM, participant random intercept",53,15,,1.0,,630.0,
 "LMM, participant random intercept + condition + lap order",33,14,,1.0,,630.0,
 KW permutation within participant,21,6,1.0,1.0,,,8.0

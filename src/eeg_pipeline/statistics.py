@@ -352,115 +352,6 @@ def misc_fisher_entity_ranking(kruskal_tests: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def misc_threshold_sensitivity_entities(lap_df: pd.DataFrame, stat_cols: list[str]) -> pd.DataFrame:
-    score = pd.to_numeric(lap_df["misc_score"], errors="coerce")
-    schemes = {
-        "0-2_3-5_6-10": [(-np.inf, 2, "low"), (3, 5, "mid"), (6, np.inf, "high")],
-        "0-1_2-4_5-10": [(-np.inf, 1, "low"), (2, 4, "mid"), (5, np.inf, "high")],
-    }
-    entity_rows: list[dict[str, Any]] = []
-    for scheme, bins in schemes.items():
-        labels = pd.Series(np.nan, index=lap_df.index, dtype=object)
-        for lower, upper, label in bins:
-            labels.loc[(score >= lower) & (score <= upper)] = label
-        feature_rows: list[dict[str, Any]] = []
-        for feature in stat_cols:
-            groups = [
-                pd.to_numeric(lap_df.loc[labels == label, feature], errors="coerce").dropna().to_numpy(dtype=float)
-                for _, _, label in bins
-            ]
-            if not all(len(group) > 0 for group in groups):
-                continue
-            try:
-                result = kruskal(*groups)
-                p_value = float(result.pvalue)
-                h_stat = float(result.statistic)
-            except Exception:
-                p_value, h_stat = np.nan, np.nan
-            item = _parse_channel_feature(feature)
-            item.update({"feature": feature, "p_kruskal": p_value, "h_statistic": h_stat, "n_laps": int(sum(len(g) for g in groups))})
-            feature_rows.append(item)
-        feature_df = pd.DataFrame(feature_rows)
-        if feature_df.empty:
-            continue
-        feature_df["q_kruskal_bh"] = _bh_fdr(feature_df["p_kruskal"])
-        for entity, group in feature_df.groupby("entity", dropna=False):
-            p_values = pd.to_numeric(group["p_kruskal"], errors="coerce").dropna().to_numpy(dtype=float)
-            if len(p_values) == 0:
-                continue
-            fisher_stat, combined_p = combine_pvalues(p_values, method="fisher")
-            entity_rows.append(
-                {
-                    "scheme": scheme,
-                    "entity": entity,
-                    "level": "channel",
-                    "feature_count": int(len(group)),
-                    "mean_p_value": float(np.mean(p_values)),
-                    "fisher_statistic": float(fisher_stat),
-                    "combined_p_fisher": float(combined_p),
-                    "features_q_lt_0_05": int((group["q_kruskal_bh"] < 0.05).sum()),
-                }
-            )
-    out = pd.DataFrame(entity_rows)
-    if out.empty:
-        return out
-    out["combined_fdr_bh"] = out.groupby("scheme", group_keys=False)["combined_p_fisher"].transform(_bh_fdr)
-    out["neglog10_mean_p"] = -np.log10(np.clip(out["mean_p_value"].to_numpy(dtype=float), 1e-300, 1.0))
-    out["neglog10_combined_p"] = -np.log10(np.clip(out["combined_p_fisher"].to_numpy(dtype=float), 1e-300, 1.0))
-    out["neglog10_combined_bh_p"] = -np.log10(np.clip(out["combined_fdr_bh"].to_numpy(dtype=float), 1e-300, 1.0))
-    out["fisher_evidence_score"] = out["neglog10_combined_p"]
-    out = out.sort_values(["scheme", "fisher_evidence_score", "combined_p_fisher"], ascending=[True, False, True]).reset_index(drop=True)
-    out.insert(0, "scheme_rank", out.groupby("scheme").cumcount() + 1)
-    return out
-
-
-def beta_validation_representative_channels(
-    kruskal_tests: pd.DataFrame,
-    entity_ranking: pd.DataFrame,
-    n: int = 3,
-) -> pd.DataFrame:
-    if kruskal_tests.empty or entity_ranking.empty:
-        return pd.DataFrame()
-    if not {"band", "feature_family", "measure"}.issubset(kruskal_tests.columns):
-        return pd.DataFrame()
-    required_rank_cols = {"entity", "level", "combined_p_fisher", "combined_fdr_bh"}
-    if not required_rank_cols.issubset(entity_ranking.columns):
-        return pd.DataFrame()
-
-    channels = entity_ranking[entity_ranking["level"].eq("channel")].copy()
-    channels["combined_p_fisher"] = pd.to_numeric(channels["combined_p_fisher"], errors="coerce")
-    channels["combined_fdr_bh"] = pd.to_numeric(channels["combined_fdr_bh"], errors="coerce")
-    channels = channels.sort_values(
-        ["combined_fdr_bh", "combined_p_fisher", "entity"],
-        na_position="last",
-    ).drop_duplicates("entity")
-    channels = channels.head(n).copy()
-    if channels.empty:
-        return pd.DataFrame()
-    channels.insert(0, "channel_rank_fisher", np.arange(1, len(channels) + 1))
-
-    beta_psd = kruskal_tests[
-        kruskal_tests["level"].eq("channel")
-        & kruskal_tests["band"].eq("beta")
-        & kruskal_tests["feature_family"].eq("psd")
-        & kruskal_tests["measure"].eq("absolute_power")
-    ].copy()
-    if beta_psd.empty:
-        return pd.DataFrame()
-    beta_psd = beta_psd.drop_duplicates("entity")
-    out = channels[["entity", "channel_rank_fisher", "combined_p_fisher", "combined_fdr_bh"]].merge(
-        beta_psd,
-        on="entity",
-        how="inner",
-        suffixes=("_channel", ""),
-    )
-    if out.empty:
-        return out
-    out = out.sort_values("channel_rank_fisher").reset_index(drop=True)
-    out.insert(0, "beta_rank", np.arange(1, len(out) + 1))
-    return out
-
-
 def susceptibility_group_tests(lap_df: pd.DataFrame, stat_cols: list[str]) -> pd.DataFrame:
     subject_df = (
         lap_df.groupby(["subject_id", "susceptibility_group"], dropna=False)[stat_cols]
@@ -526,47 +417,14 @@ def run_statistics(config: dict[str, Any], features_path: Path, output_root: Pat
 
     condition_tests = condition_paired_tests(lap_df, stat_cols)
     misc_tests = misc_spearman_tests(lap_df, stat_cols)
-    misc_kruskal_tests, misc_dunn_tests = misc_kruskal_dunn_tests(lap_df, stat_cols)
-    misc_entity_ranking = misc_fisher_entity_ranking(misc_kruskal_tests)
-    misc_threshold_sensitivity = misc_threshold_sensitivity_entities(lap_df, stat_cols)
-    beta_psd_all_entities = misc_kruskal_tests[
-        misc_kruskal_tests["level"].eq("channel")
-        & misc_kruskal_tests["band"].eq("beta")
-        & misc_kruskal_tests["feature_family"].eq("psd")
-        & misc_kruskal_tests["measure"].eq("absolute_power")
-    ].copy()
-    if not beta_psd_all_entities.empty:
-        beta_psd_all_entities = beta_psd_all_entities.sort_values(
-            ["q_kruskal_bh", "p_kruskal", "entity"],
-            na_position="last",
-        ).reset_index(drop=True)
-    beta_representative = beta_validation_representative_channels(
-        misc_kruskal_tests,
-        misc_entity_ranking,
-        n=3,
-    )
+    misc_kruskal_tests, _ = misc_kruskal_dunn_tests(lap_df, stat_cols)
     susceptibility_tests = susceptibility_group_tests(lap_df, stat_cols)
     quality_reports = run_quality_report(config, output_root)
 
     condition_tests.to_csv(out_dir / "condition_paired_tests.csv", index=False, encoding="utf-8-sig")
     misc_tests.to_csv(out_dir / "misc_spearman_tests.csv", index=False, encoding="utf-8-sig")
     misc_kruskal_tests.to_csv(out_dir / "misc_kruskal_tests.csv", index=False, encoding="utf-8-sig")
-    misc_dunn_tests.to_csv(out_dir / "misc_dunn_posthoc_tests.csv", index=False, encoding="utf-8-sig")
-    misc_entity_ranking.to_csv(out_dir / "misc_fisher_entity_ranking.csv", index=False, encoding="utf-8-sig")
-    misc_threshold_sensitivity.to_csv(out_dir / "misc_threshold_sensitivity_entities.csv", index=False, encoding="utf-8-sig")
-    beta_psd_all_entities.to_csv(out_dir / "misc_beta_psd_all_entities.csv", index=False, encoding="utf-8-sig")
-    beta_representative.to_csv(out_dir / "misc_beta_validation_representative.csv", index=False, encoding="utf-8-sig")
     susceptibility_tests.to_csv(out_dir / "susceptibility_group_tests.csv", index=False, encoding="utf-8-sig")
-
-    evidence = misc_kruskal_tests[["feature", "entity", "level", "feature_family", "band", "measure", "h_statistic", "p_kruskal", "q_kruskal_bh"]].copy()
-    if not misc_dunn_tests.empty:
-        dunn_min = misc_dunn_tests.groupby("feature", as_index=False)["q_dunn_bh"].min().rename(columns={"q_dunn_bh": "best_dunn_q"})
-        evidence = evidence.merge(dunn_min, on="feature", how="left")
-    evidence = evidence.merge(misc_tests[["feature", "rho", "p_spearman", "q_spearman_bh"]], on="feature", how="left")
-    evidence = evidence.merge(susceptibility_tests[["feature", "rank_biserial", "p_mannwhitney", "q_mannwhitney_bh"]], on="feature", how="left")
-    evidence = evidence.merge(condition_tests[["feature", "mean_diff", "cohens_dz", "p_signflip", "q_signflip_bh"]], on="feature", how="left")
-    evidence = evidence.sort_values(["q_kruskal_bh", "best_dunn_q", "feature"], na_position="last")
-    evidence.to_csv(out_dir / "representative_feature_evidence.csv", index=False, encoding="utf-8-sig")
 
     summary = pd.DataFrame(
         [
@@ -602,52 +460,6 @@ def run_statistics(config: dict[str, Any], features_path: Path, output_root: Pat
                 "fdr_value": "q_kruskal_bh",
                 "significant_q_lt_0_05": int((misc_kruskal_tests.get("q_kruskal_bh", pd.Series(dtype=float)) < 0.05).sum()),
             },
-            {
-                "analysis": "lap_level_misc_3class_fisher_entity",
-                "unit": "lap_mean_entity_aggregate",
-                "features_tested": len(stat_cols),
-                "entities_tested": int(len(misc_entity_ranking)),
-                "p_value": "combined_p_fisher",
-                "fdr_value": "combined_fdr_bh",
-                "significant_q_lt_0_05": int((misc_entity_ranking.get("combined_fdr_bh", pd.Series(dtype=float)) < 0.05).sum()),
-            },
-            {
-                "analysis": "lap_level_misc_3class_beta_absolute_psd",
-                "unit": "lap_mean_entity_feature",
-                "features_tested": int(len(beta_psd_all_entities)),
-                "entities_tested": int(beta_psd_all_entities["entity"].nunique()) if not beta_psd_all_entities.empty else 0,
-                "p_value": "p_kruskal",
-                "fdr_value": "q_kruskal_bh",
-                "significant_q_lt_0_05": int((beta_psd_all_entities.get("q_kruskal_bh", pd.Series(dtype=float)) < 0.05).sum()),
-            },
-            *[
-                {
-                    "analysis": f"lap_level_misc_threshold_sensitivity_{scheme}",
-                    "unit": "lap_mean_entity_aggregate",
-                    "features_tested": len(stat_cols),
-                    "entities_tested": int((misc_threshold_sensitivity.get("scheme", pd.Series(dtype=str)) == scheme).sum()),
-                    "p_value": "combined_p_fisher",
-                    "fdr_value": "combined_fdr_bh",
-                    "significant_q_lt_0_05": int(
-                        (
-                            misc_threshold_sensitivity.loc[
-                                misc_threshold_sensitivity.get("scheme", pd.Series(dtype=str)) == scheme,
-                                "combined_fdr_bh",
-                            ]
-                            < 0.05
-                        ).sum()
-                    ),
-                }
-                for scheme in misc_threshold_sensitivity.get("scheme", pd.Series(dtype=str)).dropna().unique()
-            ],
-            {
-                "analysis": "lap_level_misc_3class_dunn",
-                "unit": "lap_mean_pairwise",
-                "features_tested": int(len(misc_dunn_tests)),
-                "p_value": "p_dunn",
-                "fdr_value": "q_dunn_bh",
-                "significant_q_lt_0_05": int((misc_dunn_tests.get("q_dunn_bh", pd.Series(dtype=float)) < 0.05).sum()),
-            },
         ]
     )
     summary.to_csv(out_dir / "statistics_summary.csv", index=False, encoding="utf-8-sig")
@@ -659,11 +471,6 @@ def run_statistics(config: dict[str, Any], features_path: Path, output_root: Pat
         "condition_tests": condition_tests,
         "misc_tests": misc_tests,
         "misc_kruskal_tests": misc_kruskal_tests,
-        "misc_dunn_tests": misc_dunn_tests,
-        "misc_entity_ranking": misc_entity_ranking,
-        "misc_threshold_sensitivity": misc_threshold_sensitivity,
-        "beta_psd_all_entities": beta_psd_all_entities,
-        "beta_representative": beta_representative,
         "susceptibility_tests": susceptibility_tests,
         "quality_reports": quality_reports,
         "summary": summary,
